@@ -2,306 +2,147 @@ package io.github.mobdev
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.os.Bundle
 import android.provider.ContactsContract
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.BaseAdapter
+import android.widget.Button
+import android.widget.ListView
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var contactsList: ListView
+    private lateinit var permissionContainer: View
+    private lateinit var emptyView: TextView
+
+    private var contacts: List<Contact> = emptyList()
+
+    private val permissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+
+            if (granted) {
+                loadContacts()
+            } else {
+                showPermissionState()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setContent {
-            ContactsScreen()
-        }
-    }
-}
+        setContentView(R.layout.activity_main)
 
-@Composable
-fun ContactsScreen() {
+        contactsList = findViewById(R.id.contacts_list)
+        permissionContainer = findViewById(R.id.permission_container)
+        emptyView = findViewById(R.id.empty_view)
 
-    val context = LocalContext.current
+        findViewById<Button>(R.id.grant_permission_button)
+            .setOnClickListener {
+                permissionLauncher.launch(
+                    Manifest.permission.READ_CONTACTS
+                )
+            }
 
-    var hasPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
+        if (ContextCompat.checkSelfPermission(
+                this,
                 Manifest.permission.READ_CONTACTS
             ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    var contacts by remember {
-        mutableStateOf<List<Contact>>(emptyList())
-    }
-
-    var selectedContact by remember {
-        mutableStateOf<Contact?>(null)
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasPermission = granted
-    }
-
-    LaunchedEffect(hasPermission) {
-        if (hasPermission) {
-            contacts = context.fetchAllContacts()
+        ) {
+            loadContacts()
         } else {
-            contacts = emptyList()
+            showPermissionState()
         }
     }
 
-    Scaffold { paddingValues ->
+    private fun loadContacts() {
+        contacts = fetchAllContacts()
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-
-            if (!hasPermission) {
-
-                PermissionContent(
-                    onGrantPermission = {
-                        permissionLauncher.launch(
-                            Manifest.permission.READ_CONTACTS
-                        )
-                    }
-                )
-
-            } else if (contacts.isEmpty()) {
-
-                EmptyContactsContent()
-
-            } else {
-
-                ContactsList(
-                    contacts = contacts,
-                    onContactClick = { contact ->
-                        selectedContact = contact
-                    }
-                )
-            }
-        }
+        showContacts()
     }
 
-    selectedContact?.let { contact ->
+    private fun showPermissionState() {
+        permissionContainer.visibility = View.VISIBLE
+        contactsList.visibility = View.GONE
+        emptyView.visibility = View.GONE
+    }
 
-        ContactDialog(
-            contact = contact,
-            onDismiss = {
-                selectedContact = null
-            }
+    private fun showContacts() {
+        permissionContainer.visibility = View.GONE
+
+        if (contacts.isEmpty()) {
+            contactsList.visibility = View.GONE
+            emptyView.visibility = View.VISIBLE
+            return
+        }
+
+        emptyView.visibility = View.GONE
+        contactsList.visibility = View.VISIBLE
+
+        contactsList.adapter = ContactAdapter(
+            this,
+            contacts
         )
-    }
-}
 
-@Composable
-fun PermissionContent(
-    onGrantPermission: () -> Unit
-) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-
-            Text(
-                text = stringResource(R.string.no_permission),
-                fontSize = 16.sp
-            )
-
-            Button(
-                onClick = onGrantPermission,
-                modifier = Modifier.padding(top = 16.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.grant_permission)
-                )
-            }
+        contactsList.setOnItemClickListener { _, _, position, _ ->
+            showContactDialog(contacts[position])
         }
     }
-}
 
-@Composable
-fun EmptyContactsContent() {
+    private fun showContactDialog(contact: Contact) {
+        val dialogView = LayoutInflater.from(this)
+            .inflate(R.layout.dialog_contact, null)
 
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = stringResource(R.string.no_contacts),
-            fontSize = 16.sp
+        val phone = dialogView.findViewById<TextView>(
+            R.id.dialog_phone
         )
-    }
-}
 
-@Composable
-fun ContactsList(
-    contacts: List<Contact>,
-    onContactClick: (Contact) -> Unit
-) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            top = 8.dp,
-            bottom = 8.dp
+        val email = dialogView.findViewById<TextView>(
+            R.id.dialog_email
         )
-    ) {
 
-        items(
-            items = contacts,
-            key = { contact ->
-                contact.id
-            }
-        ) { contact ->
+        val note = dialogView.findViewById<TextView>(
+            R.id.dialog_note
+        )
 
-            ContactItem(
-                contact = contact,
-                onClick = {
-                    onContactClick(contact)
-                }
-            )
+        if (contact.phoneNumber != null) {
+            phone.text = contact.phoneNumber
+        } else {
+            phone.setText(R.string.no_phone)
         }
+
+        if (contact.email != null) {
+            email.text = contact.email
+        } else {
+            email.setText(R.string.no_email)
+        }
+
+        if (contact.note != null) {
+            note.text = contact.note
+        } else {
+            note.setText(R.string.no_note)
+        }
+
+        val title = contact.name
+            ?: getString(R.string.unknown_name)
+
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(dialogView)
+            .setPositiveButton(R.string.close, null)
+            .show()
     }
-}
-
-@Composable
-fun ContactItem(
-    contact: Contact,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                horizontal = 8.dp,
-                vertical = 4.dp
-            )
-            .clickable {
-                onClick()
-            }
-    ) {
-
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-
-            Text(
-                text = contact.name
-                    ?: stringResource(R.string.unknown_name),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Text(
-                text = contact.phoneNumber
-                    ?: stringResource(R.string.no_phone),
-                fontSize = 14.sp,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun ContactDialog(
-    contact: Contact,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-
-        onDismissRequest = onDismiss,
-
-        title = {
-            Text(
-                text = contact.name
-                    ?: stringResource(R.string.unknown_name)
-            )
-        },
-
-        text = {
-            Column {
-
-                Text(
-                    text = stringResource(
-                        R.string.phone_format,
-                        contact.phoneNumber
-                            ?: stringResource(R.string.no_phone)
-                    )
-                )
-
-                Text(
-                    text = stringResource(
-                        R.string.email_format,
-                        contact.email
-                            ?: stringResource(R.string.no_email)
-                    ),
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-
-                Text(
-                    text = stringResource(
-                        R.string.note_format,
-                        contact.note
-                            ?: stringResource(R.string.no_note)
-                    ),
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-        },
-
-        confirmButton = {
-
-            TextButton(
-                onClick = onDismiss
-            ) {
-                Text(
-                    text = stringResource(R.string.close)
-                )
-            }
-        }
-    )
 }
 
 data class Contact(
@@ -312,64 +153,116 @@ data class Contact(
     val note: String?
 )
 
+class ContactAdapter(
+    private val context: Context,
+    private val contacts: List<Contact>
+) : BaseAdapter() {
+
+    override fun getCount(): Int {
+        return contacts.size
+    }
+
+    override fun getItem(position: Int): Contact {
+        return contacts[position]
+    }
+
+    override fun getItemId(position: Int): Long {
+        return contacts[position].id
+    }
+
+    override fun getView(
+        position: Int,
+        convertView: View?,
+        parent: ViewGroup
+    ): View {
+
+        val view = convertView
+            ?: LayoutInflater.from(context)
+                .inflate(
+                    R.layout.item_contact,
+                    parent,
+                    false
+                )
+
+        val name = view.findViewById<TextView>(
+            R.id.contact_name
+        )
+
+        val phone = view.findViewById<TextView>(
+            R.id.contact_phone
+        )
+
+        val contact = getItem(position)
+
+        if (contact.name != null) {
+            name.text = contact.name
+        } else {
+            name.setText(R.string.unknown_name)
+        }
+
+        if (contact.phoneNumber != null) {
+            phone.text = contact.phoneNumber
+        } else {
+            phone.setText(R.string.no_phone)
+        }
+
+        return view
+    }
+}
+
 @SuppressLint("Range")
 fun Context.fetchAllContacts(): List<Contact> {
 
-    val cursor = contentResolver.query(
-        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+    val contacts = mutableListOf<Contact>()
 
+    contentResolver.query(
+        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
         arrayOf(
             ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
             ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
             ContactsContract.CommonDataKinds.Phone.NUMBER
         ),
-
         null,
         null,
         null
-    )
+    )?.use { cursor ->
 
-    cursor?.use {
+        while (cursor.moveToNext()) {
 
-        return buildList {
-
-            while (it.moveToNext()) {
-
-                val contactId = it.getLong(
-                    it.getColumnIndex(
-                        ContactsContract.CommonDataKinds.Phone.CONTACT_ID
-                    )
+            val id = cursor.getLong(
+                cursor.getColumnIndex(
+                    ContactsContract.CommonDataKinds.Phone.CONTACT_ID
                 )
+            )
 
-                val name = it.getStringOrNull(
-                    it.getColumnIndex(
-                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
-                    )
+            val name = cursor.getStringOrNull(
+                cursor.getColumnIndex(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
                 )
+            )
 
-                val phoneNumber = it.getStringOrNull(
-                    it.getColumnIndex(
-                        ContactsContract.CommonDataKinds.Phone.NUMBER
-                    )
+            val phoneNumber = cursor.getStringOrNull(
+                cursor.getColumnIndex(
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
                 )
+            )
 
-                val email = fetchEmail(contactId)
-                val note = fetchNote(contactId)
+            val email = fetchEmail(id)
+            val note = fetchNote(id)
 
-                add(
-                    Contact(
-                        id = contactId,
-                        name = name,
-                        phoneNumber = phoneNumber,
-                        email = email,
-                        note = note
-                    )
+            contacts.add(
+                Contact(
+                    id = id,
+                    name = name,
+                    phoneNumber = phoneNumber,
+                    email = email,
+                    note = note
                 )
-            }
+            )
         }
     }
 
-    return emptyList()
+    return contacts
 }
 
 @SuppressLint("Range")
@@ -379,23 +272,15 @@ private fun Context.fetchEmail(
 
     contentResolver.query(
         ContactsContract.CommonDataKinds.Email.CONTENT_URI,
-
         arrayOf(
             ContactsContract.CommonDataKinds.Email.ADDRESS
         ),
-
         "${ContactsContract.CommonDataKinds.Email.CONTACT_ID} = ?",
-
-        arrayOf(
-            contactId.toString()
-        ),
-
+        arrayOf(contactId.toString()),
         null
-
     )?.use { cursor ->
 
         if (cursor.moveToFirst()) {
-
             return cursor.getStringOrNull(
                 cursor.getColumnIndex(
                     ContactsContract.CommonDataKinds.Email.ADDRESS
@@ -414,25 +299,19 @@ private fun Context.fetchNote(
 
     contentResolver.query(
         ContactsContract.Data.CONTENT_URI,
-
         arrayOf(
             ContactsContract.CommonDataKinds.Note.NOTE
         ),
-
         "${ContactsContract.Data.MIMETYPE} = ? AND " +
                 "${ContactsContract.Data.CONTACT_ID} = ?",
-
         arrayOf(
             ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE,
             contactId.toString()
         ),
-
         null
-
     )?.use { cursor ->
 
         if (cursor.moveToFirst()) {
-
             return cursor.getStringOrNull(
                 cursor.getColumnIndex(
                     ContactsContract.CommonDataKinds.Note.NOTE

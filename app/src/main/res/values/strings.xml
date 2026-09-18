@@ -12,10 +12,6 @@
     <string name="email">Email</string>
     <string name="note">Заметки</string>
 
-    <string name="phone_format">Телефон: %1$s</string>
-    <string name="email_format">Email: %1$s</string>
-    <string name="note_format">Заметки: %1$s</string>
-
     <string name="no_phone">—</string>
     <string name="no_email">—</string>
     <string name="no_note">—</string>
