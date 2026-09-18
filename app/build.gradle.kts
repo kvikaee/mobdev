@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -58,6 +59,10 @@ dependencies {
     implementation(libs.retrofit.converter.scalars)
     implementation(libs.retrofit.converter.kotlinx.serialization)
     implementation(libs.okhttp)
+
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
     // Jetpack Compose
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
