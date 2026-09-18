@@ -161,7 +161,12 @@ class ChatViewModel(
         val credentials = credentialsStore.load() ?: return
         _state.update { it.copy(userName = credentials.name, isLoggingIn = true) }
         viewModelScope.launch {
-            performLogin(credentials.name, credentials.password, saveCredentials = false, silent = true)
+            performLogin(
+                credentials.name,
+                credentials.password,
+                saveCredentials = false,
+                silent = true,
+            )
         }
     }
 
